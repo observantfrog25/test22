@@ -148,15 +148,20 @@ sf_to_tidygraph <- function(x, directed = TRUE, snap_tolerance = 1) {
 }
 
 #' Build a topologically-clean road network using sfnetworks.
-#' Handles snapping, subdivision at crossings, and removal of pseudo-nodes.
+#' Snaps coordinates to a grid (snap_tolerance in CRS units, e.g. meters for
+#' EPSG:4087), subdivides edges at crossings, and removes pseudo-nodes.
 #' Returns a tbl_graph compatible with tidygraph/igraph operations.
 build_road_network <- function(x, directed = FALSE, snap_tolerance = 1) {
   x <- st_cast(x, "LINESTRING")
 
+  # precision = 1/snap_tolerance: round(coord * precision) / precision
+  # e.g. snap_tolerance = 1 m  -> precision = 1 -> round to nearest meter
+  x <- st_set_precision(x, 1 / snap_tolerance)
+  x <- st_make_valid(x)
+
   net <- sfnetworks::as_sfnetwork(x, directed = directed)
 
   net <- net %>%
-    sfnetworks::st_network_blend(tolerance = snap_tolerance) %>%
     tidygraph::convert(sfnetworks::to_spatial_subdivision) %>%
     tidygraph::convert(sfnetworks::to_spatial_smooth)
 
