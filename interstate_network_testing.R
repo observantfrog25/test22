@@ -18,7 +18,7 @@ t_flow_interstate <- function(year,
                               write = FALSE,
                               write_dir = tempdir()) {
   all_roads <- sf::read_sf(here::here("Roads", "CA_WA_OR_snapped_clean.shp"))
-  full_graph <- sf_to_tidygraph(all_roads, directed = FALSE)
+  full_graph <- sf_to_tidygraph(all_roads, directed = TRUE, snap_tolerance = 1)
   
   ca_pa_origin <- ca[species == "Ae aegypti" &
                        year == year, .(p = as.integer(any(total > 0))), by = c("longitude", "latitude")]
@@ -271,7 +271,7 @@ mapshot(m, url = "WA_AADT.html")
 
 # testing out why AADT differs in clustered cells
 all_roads <- sf::read_sf(here::here("Roads", "CA_WA_OR_avg_aadt_clean.shp"))
-full_graph <- sf_to_tidygraph(all_roads, directed = FALSE) %>%
+full_graph <- sf_to_tidygraph(all_roads, directed = TRUE, snap_tolerance = 1) %>%
   activate(nodes) %>%
   mutate(component = group_components()) %>%
   filter(component == names(which.max(table(component))))
@@ -368,7 +368,7 @@ all_roads <- all_roads %>%
     Shape_Leng = as.numeric(st_length(geometry))
   )
 
-full_graph <- sf_to_tidygraph(all_roads, directed = FALSE)
+full_graph <- sf_to_tidygraph(all_roads, directed = TRUE, snap_tolerance = 1)
 # # 
 # mapview(full_graph %>%
 #           activate(edges) %>%
