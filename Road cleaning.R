@@ -169,5 +169,23 @@ build_road_network <- function(x, directed = FALSE, snap_tolerance = 1) {
     activate(edges) %>%
     mutate(Shape_Leng = as.numeric(sfnetworks::edge_length()))
 
+  # to_spatial_subdivision / to_spatial_smooth leave behind list columns
+  # (.tidygraph_node_index, .tidygraph_edge_index) that break mapview and
+  # other tools expecting simple data frames.
+  list_col_names <- function(tbl) {
+    nms <- names(tbl)
+    nms[vapply(tbl, is.list, logical(1)) & nms != attr(tbl, "sf_column")]
+  }
+
+  node_drops <- list_col_names(sf::st_as_sf(net, "nodes"))
+  edge_drops <- list_col_names(sf::st_as_sf(net, "edges"))
+
+  if (length(node_drops) > 0) {
+    net <- net %>% activate(nodes) %>% select(-all_of(node_drops))
+  }
+  if (length(edge_drops) > 0) {
+    net <- net %>% activate(edges) %>% select(-all_of(edge_drops))
+  }
+
   as_tbl_graph(net)
 }
