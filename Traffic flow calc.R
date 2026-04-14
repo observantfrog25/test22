@@ -92,7 +92,7 @@ ca_boundary <- tigris::states(cb = FALSE, resolution = "500k") %>%
 
 ca_major <- sf::read_sf(paste0(here::here(), "/Roads/CA state lines/CA_avg_aadt_clean.shp"))
 
-ca_graph <- sf_to_tidygraph(ca_major, directed = FALSE)
+ca_graph <- build_road_network(ca_major, directed = FALSE)
 
 t_flow_fun <- function(years,
                        write = TRUE,

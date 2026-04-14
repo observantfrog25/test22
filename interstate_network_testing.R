@@ -18,7 +18,7 @@ t_flow_interstate <- function(year,
                               write = FALSE,
                               write_dir = tempdir()) {
   all_roads <- sf::read_sf(here::here("Roads", "CA_WA_OR_snapped_clean.shp"))
-  full_graph <- sf_to_tidygraph(all_roads, directed = FALSE)
+  full_graph <- build_road_network(all_roads, directed = FALSE)
   
   ca_pa_origin <- ca[species == "Ae aegypti" &
                        year == year, .(p = as.integer(any(total > 0))), by = c("longitude", "latitude")]
@@ -164,7 +164,7 @@ names(wa_exposure) <- c("AADT_Exposure", "Dist_to_Road")
 # wa_exposure <- terra::crop(wa_exposure, wa_boundary)
 # wa_exposure <- terra::mask(wa_exposure, wa_boundary)
 
-wa_roads <- sf_to_tidygraph(sf::read_sf(paste0(
+wa_roads <- build_road_network(sf::read_sf(paste0(
   here::here(), "/Roads/WA state lines/WA_24_clean.shp"
 )), directed = FALSE)
 
@@ -271,7 +271,7 @@ mapshot(m, url = "WA_AADT.html")
 
 # testing out why AADT differs in clustered cells
 all_roads <- sf::read_sf(here::here("Roads", "CA_WA_OR_avg_aadt_clean.shp"))
-full_graph <- sf_to_tidygraph(all_roads, directed = FALSE) %>%
+full_graph <- build_road_network(all_roads, directed = FALSE) %>%
   activate(nodes) %>%
   mutate(component = group_components()) %>%
   filter(component == names(which.max(table(component))))
@@ -363,12 +363,8 @@ seattle_pt <- st_point(c(-122.3321, 47.6062)) %>%
   st_transform(4087)
 
 all_roads <- sf::read_sf(here::here("Roads", "merge_snap.shp"))
-all_roads <- all_roads %>%
-  mutate(
-    Shape_Leng = as.numeric(st_length(geometry))
-  )
 
-full_graph <- sf_to_tidygraph(all_roads, directed = FALSE)
+full_graph <- build_road_network(all_roads, directed = FALSE)
 # # 
 # mapview(full_graph %>%
 #           activate(edges) %>%
