@@ -97,42 +97,72 @@ highway_append <- function(NHS_shp,
                            dplyr::left_join(NHS_shp, aadt_shp, by = "route_id")
                            }
 
-sf_to_tidygraph <- function(x, directed = TRUE) {
+sf_to_tidygraph <- function(x, directed = TRUE, snap_tolerance = 1) {
   edges <- x %>%
-    mutate(edgeID = c(1:n()))
-  
-  nodes <- edges %>%
+    st_cast("LINESTRING") %>%
+    mutate(edgeID = row_number())
+
+  coords <- edges %>%
     st_coordinates() %>%
-    as_tibble() %>%
-    rename(edgeID = L1) %>%
+    as_tibble()
+
+  id_col <- if ("L2" %in% names(coords)) "L2" else "L1"
+  coords <- coords %>% rename(edgeID = !!sym(id_col))
+
+  endpoints <- coords %>%
     group_by(edgeID) %>%
     slice(c(1, n())) %>%
     ungroup() %>%
-    mutate(start_end = rep(c('start', 'end'), times = n() / 2)) %>%
-    mutate(xy = paste(.$X, .$Y)) %>%
+    mutate(start_end = rep(c('start', 'end'), times = n() / 2))
+
+  endpoints <- endpoints %>%
+    mutate(
+      X_snap = round(X / snap_tolerance) * snap_tolerance,
+      Y_snap = round(Y / snap_tolerance) * snap_tolerance,
+      xy = paste(X_snap, Y_snap)
+    ) %>%
     group_by(xy) %>%
     mutate(nodeID = cur_group_id()) %>%
     ungroup()
-  
-  source_nodes <- nodes %>%
+
+  source_nodes <- endpoints %>%
     filter(start_end == 'start') %>%
     pull(nodeID)
-  
-  target_nodes <- nodes %>%
+
+  target_nodes <- endpoints %>%
     filter(start_end == 'end') %>%
     pull(nodeID)
-  
-  edges = edges %>%
+
+  edges <- edges %>%
     mutate(from = source_nodes, to = target_nodes)
-  
-  nodes <- nodes %>%
+
+  nodes <- endpoints %>%
     distinct(nodeID, .keep_all = TRUE) %>%
-    select(-c(edgeID, start_end)) %>%
+    select(-c(edgeID, start_end, xy, X_snap, Y_snap)) %>%
     st_as_sf(coords = c('X', 'Y')) %>%
     st_set_crs(st_crs(edges))
-  
+
   tbl_graph(nodes = nodes,
             edges = as_tibble(edges),
             directed = directed)
-  
+}
+
+#' Build a topologically-clean road network using sfnetworks.
+#' Handles snapping, subdivision at crossings, and removal of pseudo-nodes.
+#' Returns a tbl_graph compatible with tidygraph/igraph operations.
+build_road_network <- function(x, directed = FALSE, snap_tolerance = 1) {
+  x <- st_cast(x, "LINESTRING")
+
+  net <- sfnetworks::as_sfnetwork(x, directed = directed)
+
+  net <- net %>%
+    sfnetworks::st_network_blend(tolerance = snap_tolerance) %>%
+    tidygraph::convert(sfnetworks::to_spatial_subdivision) %>%
+    tidygraph::convert(sfnetworks::to_spatial_smooth)
+
+  net <- net %>%
+    activate(edges) %>%
+    mutate(Shape_Leng = as.numeric(sfnetworks::edge_length()))
+
+  as_tbl_graph(net)
 }
