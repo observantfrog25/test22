@@ -149,7 +149,7 @@ sf_to_tidygraph <- function(x, directed = TRUE, snap_tolerance = 1) {
 
 #' Build a topologically-clean road network using sfnetworks.
 #' Snaps coordinates to a grid (snap_tolerance in CRS units, e.g. meters for
-#' EPSG:4087), subdivides edges at crossings, and removes pseudo-nodes.
+#' EPSG:4087), then subdivides edges at crossings so intersecting roads connect.
 #' Returns a tbl_graph compatible with tidygraph/igraph operations.
 #'
 #' @param snap_tolerance Grid cell size for coordinate snapping, in CRS units.
@@ -169,15 +169,20 @@ build_road_network <- function(x, directed = FALSE, snap_tolerance = 1) {
 
   net <- sfnetworks::as_sfnetwork(x, directed = directed)
 
+  # Subdivide edges at interior points where they cross other edges/nodes.
+  # This is what creates connections at road intersections.
+  # NOTE: to_spatial_smooth is intentionally omitted. It merges edges at
+  # degree-2 pseudo-nodes, which silently drops attributes (e.g. AADT) from
+  # one of the two merged edges. Keeping pseudo-nodes preserves per-segment
+  # attribute values at the cost of a larger graph.
   net <- net %>%
-    tidygraph::convert(sfnetworks::to_spatial_subdivision) %>%
-    tidygraph::convert(sfnetworks::to_spatial_smooth)
+    tidygraph::convert(sfnetworks::to_spatial_subdivision)
 
   net <- net %>%
     activate(edges) %>%
     mutate(Shape_Leng = as.numeric(sfnetworks::edge_length()))
 
-  # to_spatial_subdivision / to_spatial_smooth leave behind list columns
+  # to_spatial_subdivision leaves behind list columns
   # (.tidygraph_node_index, .tidygraph_edge_index) that break mapview and
   # other tools expecting simple data frames.
   list_col_names <- function(tbl) {
