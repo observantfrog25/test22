@@ -97,11 +97,28 @@ highway_append <- function(NHS_shp,
                            dplyr::left_join(NHS_shp, aadt_shp, by = "route_id")
                            }
 
+#' Snap only the first and last coordinate of each LINESTRING to a grid,
+#' leaving interior vertices (the road shape) untouched. Returns a modified
+#' sf object with the same attributes and CRS.
+snap_endpoints <- function(x, snap_tolerance = 1) {
+  geom <- sf::st_geometry(x)
+  snapped <- lapply(geom, function(ln) {
+    coords <- sf::st_coordinates(ln)
+    xy <- coords[, 1:2, drop = FALSE]
+    n <- nrow(xy)
+    if (n < 2) return(ln)
+    xy[1, ] <- round(xy[1, ] / snap_tolerance) * snap_tolerance
+    xy[n, ] <- round(xy[n, ] / snap_tolerance) * snap_tolerance
+    sf::st_linestring(xy)
+  })
+  sf::st_geometry(x) <- sf::st_sfc(snapped, crs = sf::st_crs(x))
+  x
+}
+
 sf_to_tidygraph <- function(x, directed = TRUE, snap_tolerance = 1) {
   edges <- x %>%
     st_cast("LINESTRING") %>%
-    st_set_precision(1 / snap_tolerance) %>%
-    st_make_valid()
+    snap_endpoints(snap_tolerance = snap_tolerance)
   edges <- edges[sf::st_geometry_type(edges) == "LINESTRING", ]
   edges <- edges %>%
     mutate(edgeID = row_number())
@@ -120,11 +137,7 @@ sf_to_tidygraph <- function(x, directed = TRUE, snap_tolerance = 1) {
     mutate(start_end = rep(c('start', 'end'), times = n() / 2))
 
   endpoints <- endpoints %>%
-    mutate(
-      X_snap = round(X / snap_tolerance) * snap_tolerance,
-      Y_snap = round(Y / snap_tolerance) * snap_tolerance,
-      xy = paste(X_snap, Y_snap)
-    ) %>%
+    mutate(xy = paste(X, Y)) %>%
     group_by(xy) %>%
     mutate(nodeID = cur_group_id()) %>%
     ungroup()
@@ -142,7 +155,7 @@ sf_to_tidygraph <- function(x, directed = TRUE, snap_tolerance = 1) {
 
   nodes <- endpoints %>%
     distinct(nodeID, .keep_all = TRUE) %>%
-    select(-c(edgeID, start_end, xy, X_snap, Y_snap)) %>%
+    select(-c(edgeID, start_end, xy)) %>%
     st_as_sf(coords = c('X', 'Y')) %>%
     st_set_crs(st_crs(edges))
 
@@ -152,37 +165,28 @@ sf_to_tidygraph <- function(x, directed = TRUE, snap_tolerance = 1) {
 }
 
 #' Build a topologically-clean road network using sfnetworks.
-#' Snaps coordinates to a grid (snap_tolerance in CRS units, e.g. meters for
-#' EPSG:4087), then subdivides edges at crossings so intersecting roads connect.
+#' Snaps only line endpoints to a grid (snap_tolerance in CRS units, e.g.
+#' meters for EPSG:4087), leaving interior vertices untouched so road geometry
+#' stays smooth and Shape_Leng stays accurate. Subdivides edges at crossings
+#' so intersecting roads connect.
 #' Returns a tbl_graph compatible with tidygraph/igraph operations.
 #'
-#' @param snap_tolerance Grid cell size for coordinate snapping, in CRS units.
+#' @param snap_tolerance Grid cell size for endpoint snapping, in CRS units.
 #'   For EPSG:4087 this is meters. Endpoints within this distance of each other
 #'   will collapse to the same node. Increase if state-border endpoints are far
 #'   apart (e.g. 10 for 10m tolerance). Default 1.
 build_road_network <- function(x, directed = FALSE, snap_tolerance = 1) {
   x <- st_cast(x, "LINESTRING")
-
-  # st_set_precision sets a scale factor: coords are snapped via
-  #   round(coord * precision) / precision
-  # So precision = 1/snap_tolerance means the grid cell size = snap_tolerance.
-  # e.g. snap_tolerance = 10 -> precision = 0.1 -> coords rounded to nearest 10m
-  # st_set_precision only stores metadata; st_make_valid triggers GEOS to apply it.
-  x <- st_set_precision(x, 1 / snap_tolerance)
-  x <- st_make_valid(x)
-
-  # Precision snapping can collapse very short segments into POINTs or
-  # produce GEOMETRYCOLLECTIONs. Keep only LINESTRINGs.
+  x <- snap_endpoints(x, snap_tolerance = snap_tolerance)
   x <- x[sf::st_geometry_type(x) == "LINESTRING", ]
 
   net <- sfnetworks::as_sfnetwork(x, directed = directed)
 
   # Subdivide edges at interior points where they cross other edges/nodes.
-  # This is what creates connections at road intersections.
+  # This creates connections at road intersections.
   # NOTE: to_spatial_smooth is intentionally omitted. It merges edges at
   # degree-2 pseudo-nodes, which silently drops attributes (e.g. AADT) from
-  # one of the two merged edges. Keeping pseudo-nodes preserves per-segment
-  # attribute values at the cost of a larger graph.
+  # one of the two merged edges.
   net <- net %>%
     tidygraph::convert(sfnetworks::to_spatial_subdivision)
 
