@@ -422,7 +422,10 @@ snapped_node_d <- nodes_sf %>%
 
 edge_weights <- full_graph %>% activate(edges) %>% pull(Shape_Leng)
 
-valid_paths <- lapply(node_indices_o, function(o_node) {
+# For each origin, compute the mean AADT along its shortest path to Seattle,
+# collect the path geometry, and sum the per-origin means into a single
+# exposure value (same logic as t_flow_fun).
+path_results <- lapply(node_indices_o, function(o_node) {
   path <- igraph::shortest_paths(
     graph = full_graph,
     from = o_node,
@@ -434,19 +437,25 @@ valid_paths <- lapply(node_indices_o, function(o_node) {
   edge_ids <- as.numeric(path$epath[[1]])
   
   if (length(edge_ids) > 0) {
-    # Convert to tibble FIRST, then to sf
+    edge_aadt <- igraph::edge_attr(full_graph, "AADT", index = edge_ids)
+    mean_aadt <- mean(edge_aadt, na.rm = TRUE)
+
     path_sf <- full_graph %>% 
       activate(edges) %>% 
       slice(edge_ids) %>% 
-      as_tibble() %>%    # <--- This is the missing link
+      as_tibble() %>%
       st_as_sf()
     
-    return(path_sf)
+    return(list(path_sf = path_sf, mean_aadt = mean_aadt))
   }
-  return(NULL)
+  return(list(path_sf = NULL, mean_aadt = 0))
 })
 
-all_paths_sf <- do.call(rbind, valid_paths)
+aadt_vals <- vapply(path_results, function(r) r$mean_aadt, numeric(1))
+seattle_aadt <- sum(aadt_vals, na.rm = TRUE)
+message("Seattle AADT exposure: ", seattle_aadt)
+
+all_paths_sf <- do.call(rbind, lapply(path_results, function(r) r$path_sf))
 
 mapview(all_paths_sf, color = "firebrick", lwd = 2, layer.name = "Shortest Paths") +
   mapview(pts_o, col.regions = "dodgerblue", layer.name = "CA Original Points") +
