@@ -100,6 +100,10 @@ highway_append <- function(NHS_shp,
 sf_to_tidygraph <- function(x, directed = TRUE, snap_tolerance = 1) {
   edges <- x %>%
     st_cast("LINESTRING") %>%
+    st_set_precision(1 / snap_tolerance) %>%
+    st_make_valid()
+  edges <- edges[sf::st_geometry_type(edges) == "LINESTRING", ]
+  edges <- edges %>%
     mutate(edgeID = row_number())
 
   coords <- edges %>%
@@ -166,6 +170,10 @@ build_road_network <- function(x, directed = FALSE, snap_tolerance = 1) {
   # st_set_precision only stores metadata; st_make_valid triggers GEOS to apply it.
   x <- st_set_precision(x, 1 / snap_tolerance)
   x <- st_make_valid(x)
+
+  # Precision snapping can collapse very short segments into POINTs or
+  # produce GEOMETRYCOLLECTIONs. Keep only LINESTRINGs.
+  x <- x[sf::st_geometry_type(x) == "LINESTRING", ]
 
   net <- sfnetworks::as_sfnetwork(x, directed = directed)
 
