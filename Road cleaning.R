@@ -151,11 +151,19 @@ sf_to_tidygraph <- function(x, directed = TRUE, snap_tolerance = 1) {
 #' Snaps coordinates to a grid (snap_tolerance in CRS units, e.g. meters for
 #' EPSG:4087), subdivides edges at crossings, and removes pseudo-nodes.
 #' Returns a tbl_graph compatible with tidygraph/igraph operations.
+#'
+#' @param snap_tolerance Grid cell size for coordinate snapping, in CRS units.
+#'   For EPSG:4087 this is meters. Endpoints within this distance of each other
+#'   will collapse to the same node. Increase if state-border endpoints are far
+#'   apart (e.g. 10 for 10m tolerance). Default 1.
 build_road_network <- function(x, directed = FALSE, snap_tolerance = 1) {
   x <- st_cast(x, "LINESTRING")
 
-  # precision = 1/snap_tolerance: round(coord * precision) / precision
-  # e.g. snap_tolerance = 1 m  -> precision = 1 -> round to nearest meter
+  # st_set_precision sets a scale factor: coords are snapped via
+  #   round(coord * precision) / precision
+  # So precision = 1/snap_tolerance means the grid cell size = snap_tolerance.
+  # e.g. snap_tolerance = 10 -> precision = 0.1 -> coords rounded to nearest 10m
+  # st_set_precision only stores metadata; st_make_valid triggers GEOS to apply it.
   x <- st_set_precision(x, 1 / snap_tolerance)
   x <- st_make_valid(x)
 
