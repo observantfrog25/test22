@@ -165,16 +165,22 @@ sf_to_tidygraph <- function(x, directed = TRUE, snap_tolerance = 1) {
 }
 
 #' Build a topologically-clean road network using sfnetworks.
-#' Snaps only line endpoints to a grid (snap_tolerance in CRS units, e.g.
-#' meters for EPSG:4087), leaving interior vertices untouched so road geometry
-#' stays smooth and Shape_Leng stays accurate. Subdivides edges at crossings
-#' so intersecting roads connect.
-#' Returns a tbl_graph compatible with tidygraph/igraph operations.
 #'
-#' @param snap_tolerance Grid cell size for endpoint snapping, in CRS units.
-#'   For EPSG:4087 this is meters. Endpoints within this distance of each other
-#'   will collapse to the same node. Increase if state-border endpoints are far
-#'   apart (e.g. 10 for 10m tolerance). Default 1.
+#' Pipeline:
+#'   1. snap_endpoints() -- round only endpoint coords to a grid so that
+#'      near-coincident line endings (e.g. state borders) merge into one node.
+#'      Interior vertices stay untouched, preserving road shape and lengths.
+#'   2. as_sfnetwork() -- build the initial network from snapped lines.
+#'   3. Blend dangling nodes -- find degree-1 (dead-end) nodes that are within
+#'      snap_tolerance of another edge (e.g. on-ramp tips near a freeway) and
+#'      blend them into that edge via st_network_blend. This splits the nearby
+#'      edge and connects the dead end, without distorting any geometry.
+#'   4. to_spatial_subdivision -- split edges at interior crossing points so
+#'      intersecting roads connect.
+#'
+#' @param snap_tolerance Distance in CRS units (meters for EPSG:4087).
+#'   Controls both the endpoint grid size and the maximum distance at which
+#'   dangling nodes are blended into nearby edges.
 build_road_network <- function(x, directed = FALSE, snap_tolerance = 1) {
   x <- st_cast(x, "LINESTRING")
   x <- snap_endpoints(x, snap_tolerance = snap_tolerance)
@@ -182,11 +188,18 @@ build_road_network <- function(x, directed = FALSE, snap_tolerance = 1) {
 
   net <- sfnetworks::as_sfnetwork(x, directed = directed)
 
+  # Find degree-1 (dangling) nodes -- these are dead ends that may need to
+  # connect to a nearby edge (e.g. on-ramp tips near a freeway mainline).
+  node_degree <- igraph::degree(net)
+  dangling_idx <- which(node_degree == 1)
+
+  if (length(dangling_idx) > 0) {
+    dangling_pts <- sf::st_as_sf(net, "nodes")[dangling_idx, ]
+    net <- sfnetworks::st_network_blend(net, dangling_pts,
+                                        tolerance = snap_tolerance)
+  }
+
   # Subdivide edges at interior points where they cross other edges/nodes.
-  # This creates connections at road intersections.
-  # NOTE: to_spatial_smooth is intentionally omitted. It merges edges at
-  # degree-2 pseudo-nodes, which silently drops attributes (e.g. AADT) from
-  # one of the two merged edges.
   net <- net %>%
     tidygraph::convert(sfnetworks::to_spatial_subdivision)
 
@@ -194,9 +207,7 @@ build_road_network <- function(x, directed = FALSE, snap_tolerance = 1) {
     activate(edges) %>%
     mutate(Shape_Leng = as.numeric(sfnetworks::edge_length()))
 
-  # to_spatial_subdivision leaves behind list columns
-  # (.tidygraph_node_index, .tidygraph_edge_index) that break mapview and
-  # other tools expecting simple data frames.
+  # Drop list columns left by sfnetworks morphers that break mapview.
   list_col_names <- function(tbl) {
     nms <- names(tbl)
     nms[vapply(tbl, is.list, logical(1)) & nms != attr(tbl, "sf_column")]
