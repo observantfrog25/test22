@@ -18,15 +18,15 @@ combined <- dplyr::bind_rows(all_metrics)
 
 long_df <- combined %>%
   pivot_longer(
-    cols      = c(mean_aadt, median_aadt, min_aadt),
+    cols      = c(mean_aadt, median_aadt, harmonic_aadt),
     names_to  = "summary_method",
     values_to = "aadt_exposure"
   ) %>%
   mutate(
     summary_method = recode(summary_method,
-      mean_aadt   = "Mean",
-      median_aadt = "Median",
-      min_aadt    = "Min"
+      mean_aadt     = "Mean",
+      median_aadt   = "Median",
+      harmonic_aadt = "Harmonic Mean"
     )
   )
 

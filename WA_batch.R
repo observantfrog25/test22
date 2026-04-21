@@ -7,6 +7,7 @@ library(data.table)
 library(dplyr)
 library(tidygraph)
 library(sfnetworks)
+library(psych)
 library(future.apply)
 
 source("Road cleaning.R")
@@ -81,23 +82,23 @@ t_flow_chunked <- function(year,
       if (length(epath) > 0) {
         edge_aadt <- igraph::edge_attr(full_graph, "AADT", index = epath)
         scaled    <- edge_aadt / 1e6
-        c(mean   = mean(scaled, na.rm = TRUE),
-          median = median(scaled, na.rm = TRUE),
-          min    = min(scaled, na.rm = TRUE))
+        c(mean     = mean(scaled, na.rm = TRUE),
+          median   = median(scaled, na.rm = TRUE),
+          harmonic = psych::harmonic.mean(scaled, na.rm = TRUE, zero = FALSE))
       } else {
-        c(mean = 0, median = 0, min = 0)
+        c(mean = 0, median = 0, harmonic = 0)
       }
     })
 
     # aadt_vals is a 3 x n_origins matrix; sum across origins
     if (is.matrix(aadt_vals)) {
       data.frame(
-        mean_aadt   = sum(aadt_vals["mean", ],   na.rm = TRUE),
-        median_aadt = sum(aadt_vals["median", ], na.rm = TRUE),
-        min_aadt    = sum(aadt_vals["min", ],    na.rm = TRUE)
+        mean_aadt     = sum(aadt_vals["mean", ],     na.rm = TRUE),
+        median_aadt   = sum(aadt_vals["median", ],   na.rm = TRUE),
+        harmonic_aadt = sum(aadt_vals["harmonic", ], na.rm = TRUE)
       )
     } else {
-      data.frame(mean_aadt = 0, median_aadt = 0, min_aadt = 0)
+      data.frame(mean_aadt = 0, median_aadt = 0, harmonic_aadt = 0)
     }
   }, future.seed = TRUE)
 
