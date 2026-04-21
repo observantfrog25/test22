@@ -90,15 +90,23 @@ t_flow_chunked <- function(year,
       }
     })
 
+    dist_d <- node_index_d$nn.dists[1, 1]
+
     # aadt_vals is a 3 x n_origins matrix; sum across origins
     if (is.matrix(aadt_vals)) {
       data.frame(
         mean_aadt     = sum(aadt_vals["mean", ],     na.rm = TRUE),
         median_aadt   = sum(aadt_vals["median", ],   na.rm = TRUE),
-        harmonic_aadt = sum(aadt_vals["harmonic", ], na.rm = TRUE)
+        harmonic_aadt = sum(aadt_vals["harmonic", ], na.rm = TRUE),
+        dist_d        = dist_d
       )
     } else {
-      data.frame(mean_aadt = 0, median_aadt = 0, harmonic_aadt = 0)
+      data.frame(
+        mean_aadt     = aadt_vals["mean"],
+        median_aadt   = aadt_vals["median"],
+        harmonic_aadt = aadt_vals["harmonic"],
+        dist_d        = dist_d
+      )
     }
   }, future.seed = TRUE)
 
