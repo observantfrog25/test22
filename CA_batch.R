@@ -214,14 +214,14 @@ pts_d <- pts[pts$year == yr2, ]
 r_d <- terra::rasterize(pts_d, CA_grid, field = "p", fun = max, background = NA)
 
 pa_aadt <- data.frame(
-  aadt     = terra::values(temp[["AADT_Mean"]]),
-  presence = terra::values(r_d)
+  aadt = terra::values(temp[["AADT_Mean"]]),
+  max  = terra::values(r_d)
 ) %>%
   tidyr::drop_na()
 
 wil <- wilcox.test(
-  subset(pa_aadt, presence == 1)$aadt,
-  subset(pa_aadt, presence == 0)$aadt
+  subset(pa_aadt, max == 1)$aadt,
+  subset(pa_aadt, max == 0)$aadt
 )
 print(wil)
 
