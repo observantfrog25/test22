@@ -54,6 +54,11 @@ build_pred_grid <- function(state, year,
   names(tmean) <- "tmean"
   names(ppt)   <- "ppt"
 
+  # Resample climate/NLCD to match the base grid extent and resolution
+  tmin  <- terra::resample(tmin,  base_grid, method = "bilinear")
+  tmean <- terra::resample(tmean, base_grid, method = "bilinear")
+  ppt   <- terra::resample(ppt,  base_grid, method = "bilinear")
+
   # --- NLCD (use last available layer; repeat for future years) ---
   fctimp_stack <- terra::rast(here::here("NLCD/state_FctImp", paste0(state_upper, ".tif")))
   lndcov_stack <- terra::rast(here::here("NLCD/state_LndCov", paste0(state_upper, ".tif")))
@@ -63,6 +68,9 @@ build_pred_grid <- function(state, year,
 
   names(fctimp) <- "FctImp"
   names(lndcov) <- "LndCov"
+
+  fctimp <- terra::resample(fctimp, base_grid, method = "bilinear")
+  lndcov <- terra::resample(lndcov, base_grid, method = "near")
 
   if (length(exclude_lndcov) > 0) {
     lndcov <- terra::ifel(lndcov %in% exclude_lndcov, NA, lndcov)
